@@ -16,6 +16,7 @@ import { DialogProvider } from './src/components/DialogProvider';
 import SyncManager from './src/components/SyncManager';
 import LostEditsNotice from './src/components/LostEditsNotice';
 import ShareIntentHandler from './src/components/ShareIntentHandler';
+import { SHARE_INTENT_ENABLED } from './src/config/features';
 import QuickActionsHandler from './src/components/QuickActionsHandler';
 import { AppLockProvider, AppLockScreen } from './src/security/AppLock';
 import { MainTabParamList, RootStackParamList } from './src/navigation/types';
@@ -170,7 +171,7 @@ function ThemedNavigation() {
         <AppLockProvider>
           <SyncManager />
           <LostEditsNotice />
-          <ShareIntentHandler />
+          {SHARE_INTENT_ENABLED ? <ShareIntentHandler /> : null}
           <QuickActionsHandler />
           <RootNavigator />
           <AppLockScreen />
@@ -211,9 +212,13 @@ export default function App() {
     <SafeAreaProvider>
       <SettingsProvider>
         <ConnectivityProvider>
-          <ShareIntentProvider>
+          {SHARE_INTENT_ENABLED ? (
+            <ShareIntentProvider>
+              <Root />
+            </ShareIntentProvider>
+          ) : (
             <Root />
-          </ShareIntentProvider>
+          )}
         </ConnectivityProvider>
       </SettingsProvider>
     </SafeAreaProvider>

@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pozzy.mobile"
+      "bundleIdentifier": "hu.minya.pozzy"
     },
     "android": {
       "package": "com.pozzy.mobile",
@@ -40,18 +40,6 @@
         "expo-calendar",
         {
           "calendarPermission": "Allow Pozzy to add reminders to your calendar."
-        }
-      ],
-      [
-        "expo-share-intent",
-        {
-          "androidIntentFilters": [
-            "text/*",
-            "image/*"
-          ],
-          "androidMultiIntentFilters": [
-            "image/*"
-          ]
         }
       ],
       "expo-quick-actions",

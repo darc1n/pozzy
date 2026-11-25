@@ -1,0 +1,111 @@
+# Unsigned iOS .ipa for sideloading (SideStore / Sideloadly, free Apple ID).
+#
+# Why this exists: the app has no iOS release, and building an .ipa needs Xcode
+# (macOS). This workflow produces an *unsigned* device build on a GitHub-hosted
+# macOS runner; the signing happens later on the phone / by the sideload tool
+# with your own free Apple ID.
+#
+# Trigger: manual run (Actions -> "Unsigned iOS IPA" -> Run workflow) or a push
+# to master that touches this workflow.
+#
+# Download the result: Actions -> run -> Artifacts -> pozzy-unsigned-ipa.
+#
+# Free-account note: the App Group entitlement the share extension needs is not
+# provisioned for Personal Team accounts, so app.json drops expo-share-intent and
+# src/config/features.ts keeps it disabled in the bundle (SHARE_INTENT_ENABLED).
+name: Unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'app.json'
+      - 'App.tsx'
+      - 'src/config/features.ts'
+      - '.github/workflows/ios-unsigned-ipa.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Show toolchain
+        run: |
+          ls /Applications | grep -i xcode || true
+          xcodebuild -version
+          node --version
+          pod --version
+
+      # `npm ci` fails on this lockfile with the npm shipped by the runner, so
+      # install from the lockfile-respecting default resolver instead.
+      - name: Install JS dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Generate the iOS project (prebuild + CocoaPods)
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+
+      - name: Show schemes and targets
+        run: |
+          cd ios
+          xcodebuild -list -workspace *.xcworkspace
+
+      - name: Build unsigned device binary
+        run: |
+          cd ios
+          WORKSPACE="$(ls -d *.xcworkspace | head -1)"
+          SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          echo "workspace=$WORKSPACE scheme=$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            EXPANDED_CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package the .ipa
+        run: |
+          APP="$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$APP" ]; then
+            echo "No .app produced" >&2
+            exit 1
+          fi
+          echo "app=$APP"
+          rm -rf out && mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          # An unsigned build has no signature; drop one if a step ever adds it.
+          rm -rf "out/Payload/$(basename "$APP")/_CodeSignature"
+          cd out
+          zip -qry ../pozzy-unsigned.ipa Payload
+          cd ..
+          ls -lh pozzy-unsigned.ipa
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' out/Payload/*/Info.plist || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pozzy-unsigned-ipa
+          path: pozzy-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 90
