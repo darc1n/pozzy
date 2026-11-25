@@ -1,0 +1,61 @@
+# Codemagic fallback: build the same unsigned .ipa on Codemagic's macOS builders.
+#
+# Why: GitHub-hosted macOS runners are a best-effort shared pool — the workflow in
+# .github/workflows/ios-unsigned-ipa.yml stayed queued twice and was cancelled
+# without ever being assigned a runner. Codemagic's free personal plan includes
+# 500 macOS minutes/month (M2), runs arbitrary scripts, and keeps artifacts 30 days.
+#
+# Usage: codemagic.io -> add this repository -> the workflow below appears as
+# "unsigned-ipa" -> Start new build -> download the .ipa artifact.
+workflows:
+  unsigned-ipa:
+    name: Unsigned iOS IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      node: 24
+      xcode: latest
+      cocoapods: default
+    triggering:
+      events: []
+    scripts:
+      - name: Install JS dependencies
+        script: |
+          npm install --no-audit --no-fund
+      - name: Generate the iOS project
+        script: |
+          npx expo prebuild --platform ios --clean
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install --repo-update
+      - name: Build unsigned device binary
+        script: |
+          cd ios
+          WORKSPACE="$(ls -d *.xcworkspace | head -1)"
+          SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          echo "workspace=$WORKSPACE scheme=$SCHEME"
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -quiet \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            EXPANDED_CODE_SIGN_IDENTITY="" \
+            build
+      - name: Package the .ipa
+        script: |
+          APP="$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -1)"
+          [ -n "$APP" ] || { echo "No .app produced"; exit 1; }
+          rm -rf out && mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          rm -rf "out/Payload/$(basename "$APP")/_CodeSignature"
+          cd out && zip -qry ../pozzy-unsigned.ipa Payload
+          cd ..
+          ls -lh pozzy-unsigned.ipa
+    artifacts:
+      - pozzy-unsigned.ipa
+      - ios/build/Build/Products/Release-iphoneos/*.app
