@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15-intel
+    runs-on: macos-26-intel
     timeout-minutes: 90
 
     steps:
@@ -47,6 +47,16 @@ jobs:
           xcodebuild -version
           node --version
           pod --version
+
+      # React Native 0.86 needs Swift tools 6.2 (Xcode 26). Runner images ship
+      # several Xcodes; pick the newest available instead of the default one.
+      - name: Select the newest Xcode
+        run: |
+          NEWEST="$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          echo "selected: $NEWEST"
+          sudo xcode-select -s "$NEWEST"
+          xcodebuild -version
+          swift --version
 
       # `npm ci` fails on this lockfile with the npm shipped by the runner, so
       # install from the lockfile-respecting default resolver instead.
